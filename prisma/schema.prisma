@@ -22,14 +22,17 @@ model User {
   // Relations
   workEntries WorkEntry[]
 
+  // Indexes for user analytics and admin operations
+  @@index([createdAt])                // User registration analytics
+  @@index([email, createdAt])         // Email-based lookups with time sorting
   @@map("users")
 }
 
 model WorkEntry {
   id          String   @id @default(cuid())
   userId      String
-  date        DateTime @db.Date
-  hours       Float    @db.DoublePrecision
+  startTime   DateTime
+  endTime     DateTime
   description String   @db.Text
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -37,10 +40,15 @@ model WorkEntry {
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Indexes for performance
-  @@index([userId])
-  @@index([date])
-  @@index([userId, date])
-  @@unique([userId, date]) // Prevent duplicate entries for same user on same date
+  // Strategic indexes for query optimization with timestamp fields
+  @@index([userId])                      // Filter by user
+  @@index([startTime])                   // Filter by start time globally
+  @@index([endTime])                     // Filter by end time globally
+  @@index([userId, startTime])           // User + start time combination (most common)
+  @@index([userId, endTime])             // User + end time combination
+  @@index([userId, createdAt])           // User + creation time sorting
+  @@index([userId, startTime, endTime])  // User + full time range filtering
+  @@index([createdAt])                   // Global creation time operations
+  @@index([startTime, endTime])          // Time range queries
   @@map("work_entries")
 } 

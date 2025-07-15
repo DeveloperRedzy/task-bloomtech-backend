@@ -1,23 +1,40 @@
 import { PrismaClient } from '@prisma/client';
+import { WorkEntryResponse, WorkEntriesListResponse } from '../types/work-entry.types';
 import {
-  WorkEntryResponse,
-  WorkEntriesListResponse,
   CreateWorkEntryRequest,
   UpdateWorkEntryRequest,
   WorkEntryFilters,
-} from '../types/work-entry.types';
+} from '../utils/work-entry-validation.utils';
+import { cacheService } from './cache.service';
+import { performanceMonitor } from './performance-monitor.service';
 
 const prisma = new PrismaClient();
+
+// Optimized field selection for work entries
+const workEntrySelectFields = {
+  id: true,
+  startTime: true,
+  endTime: true,
+  description: true,
+  createdAt: true,
+  updatedAt: true,
+};
 
 export class WorkEntryService {
   /**
    * Convert Prisma WorkEntry to API response format
    */
   private formatWorkEntry(workEntry: any): WorkEntryResponse {
+    const startTime = new Date(workEntry.startTime);
+    const endTime = new Date(workEntry.endTime);
+    const durationMs = endTime.getTime() - startTime.getTime();
+    const duration = durationMs / (1000 * 60 * 60); // Convert to hours
+
     return {
       id: workEntry.id,
-      date: workEntry.date.toISOString().split('T')[0], // Format as YYYY-MM-DD
-      hours: workEntry.hours,
+      startTime: workEntry.startTime.toISOString(),
+      endTime: workEntry.endTime.toISOString(),
+      duration: Math.round(duration * 100) / 100, // Round to 2 decimal places
       description: workEntry.description,
       createdAt: workEntry.createdAt.toISOString(),
       updatedAt: workEntry.updatedAt.toISOString(),
@@ -25,126 +42,146 @@ export class WorkEntryService {
   }
 
   /**
-   * Create a new work entry for a user
+   * Create a new work entry for a user - Optimized with monitoring
    */
   async createWorkEntry(userId: string, data: CreateWorkEntryRequest): Promise<WorkEntryResponse> {
-    try {
-      // Check if entry already exists for this date
-      const existingEntry = await prisma.workEntry.findUnique({
-        where: {
-          userId_date: {
+    return performanceMonitor.monitor(
+      'createWorkEntry',
+      async () => {
+        // Create work entry with timestamp fields
+        const workEntry = await prisma.workEntry.create({
+          data: {
             userId,
-            date: new Date(data.date),
+            startTime: new Date(data.startTime),
+            endTime: new Date(data.endTime),
+            description: data.description.trim(),
           },
-        },
-      });
+          select: workEntrySelectFields,
+        });
 
-      if (existingEntry) {
-        throw new Error(
-          'A work entry already exists for this date. Please update the existing entry instead.'
-        );
-      }
+        // Invalidate user cache after creating entry
+        cacheService.invalidateUserCache(userId);
 
-      const workEntry = await prisma.workEntry.create({
-        data: {
-          userId,
-          date: new Date(data.date),
-          hours: data.hours,
-          description: data.description.trim(),
-        },
-      });
-
-      return this.formatWorkEntry(workEntry);
-    } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error('Failed to create work entry');
-    }
+        return this.formatWorkEntry(workEntry);
+      },
+      userId,
+      { startTime: data.startTime, endTime: data.endTime }
+    );
   }
 
   /**
-   * Get all work entries for a user with filtering and pagination
+   * Get all work entries for a user with filtering and pagination - Optimized with caching
    */
   async getWorkEntries(
     userId: string,
     filters: WorkEntryFilters
   ): Promise<WorkEntriesListResponse> {
-    try {
-      // Build where clause
-      const where: any = {
-        userId,
-      };
+    return performanceMonitor.monitor(
+      'getWorkEntries',
+      async () => {
+        // Try to get from cache first
+        const cacheKey = `workEntries:${userId}:${JSON.stringify(filters)}`;
+        const cachedResult = cacheService.get<WorkEntriesListResponse>(cacheKey);
+        if (cachedResult) {
+          return cachedResult;
+        }
 
-      // Add date filters
-      if (filters.startDate || filters.endDate) {
-        where.date = {};
+        // Build where clause with timestamp filtering
+        const where: any = {
+          userId,
+        };
+
+        // Date filtering based on start/end times
         if (filters.startDate) {
-          where.date.gte = new Date(filters.startDate);
+          const startDate = new Date(filters.startDate);
+          where.startTime = {
+            gte: startDate,
+          };
         }
+
         if (filters.endDate) {
-          where.date.lte = new Date(filters.endDate);
+          const endDate = new Date(filters.endDate);
+          // Add 1 day to include entries that end on the endDate
+          endDate.setDate(endDate.getDate() + 1);
+          where.endTime = {
+            lt: endDate,
+          };
         }
-      }
 
-      // Build order by clause
-      const orderBy: any = {};
-      switch (filters.sortBy) {
-        case 'hours':
-          orderBy.hours = filters.sortOrder;
-          break;
-        case 'createdAt':
-          orderBy.createdAt = filters.sortOrder;
-          break;
-        default:
-          orderBy.date = filters.sortOrder;
-      }
+        // Build orderBy clause
+        let orderBy: any = {};
+        if (filters.sortBy === 'duration') {
+          // For duration sorting, we need to use raw SQL or sort after fetching
+          // For now, we'll sort by startTime and handle duration sorting in memory
+          orderBy = { startTime: filters.sortOrder };
+        } else {
+          orderBy = { [filters.sortBy!]: filters.sortOrder };
+        }
 
-      // Calculate pagination
-      const skip = (filters.page! - 1) * filters.limit!;
+        // Calculate pagination
+        const skip = (filters.page! - 1) * filters.limit!;
 
-      // Get total count and entries
-      const [total, entries] = await Promise.all([
-        prisma.workEntry.count({ where }),
-        prisma.workEntry.findMany({
+        // Get total count for pagination
+        const totalCount = await prisma.workEntry.count({ where });
+
+        // Get work entries with optimized query
+        const workEntries = await prisma.workEntry.findMany({
           where,
+          select: workEntrySelectFields,
           orderBy,
           skip,
           take: filters.limit,
-        }),
-      ]);
+        });
 
-      // Calculate pagination metadata
-      const totalPages = Math.ceil(total / filters.limit!);
-      const hasNext = filters.page! < totalPages;
-      const hasPrev = filters.page! > 1;
+        // Format responses
+        let formattedEntries = workEntries.map((entry: any) => this.formatWorkEntry(entry));
 
-      return {
-        data: entries.map((entry: any) => this.formatWorkEntry(entry)),
-        pagination: {
-          page: filters.page!,
-          limit: filters.limit!,
-          total,
-          totalPages,
-          hasNext,
-          hasPrev,
-        },
-      };
-    } catch (error) {
-      throw new Error('Failed to retrieve work entries');
-    }
+        // Handle duration sorting in memory if needed
+        if (filters.sortBy === 'duration') {
+          formattedEntries = formattedEntries.sort((a: WorkEntryResponse, b: WorkEntryResponse) => {
+            const comparison = a.duration - b.duration;
+            return filters.sortOrder === 'asc' ? comparison : -comparison;
+          });
+        }
+
+        // Calculate pagination info
+        const totalPages = Math.ceil(totalCount / filters.limit!);
+        const hasNext = filters.page! < totalPages;
+        const hasPrev = filters.page! > 1;
+
+        const result = {
+          data: formattedEntries,
+          pagination: {
+            page: filters.page!,
+            limit: filters.limit!,
+            total: totalCount,
+            totalPages,
+            hasNext,
+            hasPrev,
+          },
+        };
+
+        // Cache the result
+        cacheService.set(cacheKey, result, 300); // Cache for 5 minutes
+
+        return result;
+      },
+      userId,
+      filters
+    );
   }
 
   /**
-   * Get a specific work entry by ID (ensuring user ownership)
+   * Get a specific work entry by ID - Optimized to reduce queries
    */
   async getWorkEntryById(userId: string, entryId: string): Promise<WorkEntryResponse> {
     try {
       const workEntry = await prisma.workEntry.findFirst({
         where: {
           id: entryId,
-          userId, // Ensure user can only access their own entries
+          userId,
         },
+        select: workEntrySelectFields,
       });
 
       if (!workEntry) {
@@ -156,12 +193,12 @@ export class WorkEntryService {
       if (error instanceof Error) {
         throw error;
       }
-      throw new Error('Failed to retrieve work entry');
+      throw new Error('Failed to get work entry');
     }
   }
 
   /**
-   * Update a work entry (ensuring user ownership)
+   * Update a work entry - Optimized to reduce queries
    */
   async updateWorkEntry(
     userId: string,
@@ -169,11 +206,17 @@ export class WorkEntryService {
     data: UpdateWorkEntryRequest
   ): Promise<WorkEntryResponse> {
     try {
-      // First check if the entry exists and belongs to the user
+      // Optimized: Get existing entry with minimal fields
       const existingEntry = await prisma.workEntry.findFirst({
         where: {
           id: entryId,
           userId,
+        },
+        select: {
+          id: true,
+          startTime: true,
+          endTime: true,
+          userId: true,
         },
       });
 
@@ -181,34 +224,21 @@ export class WorkEntryService {
         throw new Error('Work entry not found or access denied');
       }
 
-      // If updating date, check for conflicts with existing entries
-      if (data.date && data.date !== existingEntry.date.toISOString().split('T')[0]) {
-        const conflictingEntry = await prisma.workEntry.findUnique({
-          where: {
-            userId_date: {
-              userId,
-              date: new Date(data.date),
-            },
-          },
-        });
-
-        if (conflictingEntry && conflictingEntry.id !== entryId) {
-          throw new Error(
-            'A work entry already exists for this date. Please choose a different date.'
-          );
-        }
-      }
-
       // Build update data
       const updateData: any = {};
-      if (data.date) updateData.date = new Date(data.date);
-      if (data.hours !== undefined) updateData.hours = data.hours;
+      if (data.startTime) updateData.startTime = new Date(data.startTime);
+      if (data.endTime) updateData.endTime = new Date(data.endTime);
       if (data.description !== undefined) updateData.description = data.description.trim();
 
+      // Update with field selection
       const updatedEntry = await prisma.workEntry.update({
         where: { id: entryId },
         data: updateData,
+        select: workEntrySelectFields,
       });
+
+      // Invalidate user cache after updating entry
+      cacheService.invalidateUserCache(userId);
 
       return this.formatWorkEntry(updatedEntry);
     } catch (error) {
@@ -220,25 +250,32 @@ export class WorkEntryService {
   }
 
   /**
-   * Delete a work entry (ensuring user ownership)
+   * Delete a work entry - Optimized to reduce queries
    */
   async deleteWorkEntry(userId: string, entryId: string): Promise<void> {
     try {
-      // First check if the entry exists and belongs to the user
-      const existingEntry = await prisma.workEntry.findFirst({
+      // Verify ownership before deletion
+      const workEntry = await prisma.workEntry.findFirst({
         where: {
           id: entryId,
           userId,
         },
+        select: {
+          id: true,
+        },
       });
 
-      if (!existingEntry) {
+      if (!workEntry) {
         throw new Error('Work entry not found or access denied');
       }
 
+      // Delete the entry
       await prisma.workEntry.delete({
         where: { id: entryId },
       });
+
+      // Invalidate user cache after deleting entry
+      cacheService.invalidateUserCache(userId);
     } catch (error) {
       if (error instanceof Error) {
         throw error;
@@ -248,32 +285,67 @@ export class WorkEntryService {
   }
 
   /**
-   * Get work entry statistics for a user
+   * Get work entry statistics with duration calculations
    */
-  async getWorkEntryStats(userId: string, startDate?: string, endDate?: string) {
+  async getWorkEntryStats(
+    userId: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<{
+    totalHours: number;
+    averageHours: number;
+    totalEntries: number;
+  }> {
     try {
-      const where: any = { userId };
+      // Build where clause
+      const where: any = {
+        userId,
+      };
 
-      if (startDate || endDate) {
-        where.date = {};
-        if (startDate) where.date.gte = new Date(startDate);
-        if (endDate) where.date.lte = new Date(endDate);
+      if (startDate) {
+        const start = new Date(startDate);
+        where.startTime = {
+          gte: start,
+        };
       }
 
-      const stats = await prisma.workEntry.aggregate({
+      if (endDate) {
+        const end = new Date(endDate);
+        // Add 1 day to include entries that end on the endDate
+        end.setDate(end.getDate() + 1);
+        where.endTime = {
+          lt: end,
+        };
+      }
+
+      // Get all entries for the period
+      const entries = await prisma.workEntry.findMany({
         where,
-        _sum: { hours: true },
-        _avg: { hours: true },
-        _count: { id: true },
+        select: {
+          startTime: true,
+          endTime: true,
+        },
       });
 
+      // Calculate total hours from timestamps
+      const totalHours = entries.reduce((sum: number, entry: any) => {
+        const startTime = new Date(entry.startTime);
+        const endTime = new Date(entry.endTime);
+        const durationMs = endTime.getTime() - startTime.getTime();
+        const duration = durationMs / (1000 * 60 * 60); // Convert to hours
+        return sum + duration;
+      }, 0);
+
+      const totalEntries = entries.length;
+      const averageHours = totalEntries > 0 ? totalHours / totalEntries : 0;
+
       return {
-        totalHours: stats._sum.hours || 0,
-        averageHours: stats._avg.hours || 0,
-        totalEntries: stats._count.id || 0,
+        totalHours: Math.round(totalHours * 100) / 100, // Round to 2 decimal places
+        averageHours: Math.round(averageHours * 100) / 100, // Round to 2 decimal places
+        totalEntries,
       };
     } catch (error) {
-      throw new Error('Failed to retrieve work entry statistics');
+      throw new Error('Failed to get work entry statistics');
     }
   }
 }

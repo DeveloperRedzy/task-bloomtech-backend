@@ -24,74 +24,25 @@ async function main(): Promise<void> {
   console.log('✅ Demo user created:', demoUser.email);
 
   // Create sample work entries
-  const workEntries = [
-    {
-      date: new Date('2023-12-01'),
-      hours: 8.0,
-      description: 'Worked on user authentication system implementation',
+  await prisma.workEntry.create({
+    data: {
+      userId: demoUser.id,
+      startTime: new Date('2024-01-15T09:00:00.000Z'),
+      endTime: new Date('2024-01-15T17:00:00.000Z'),
+      description: 'Working on project setup and initial development',
     },
-    {
-      date: new Date('2023-12-02'),
-      hours: 7.5,
-      description: 'Developed REST API endpoints for work entries',
-    },
-    {
-      date: new Date('2023-12-03'),
-      hours: 6.0,
-      description: 'Added input validation and error handling',
-    },
-    {
-      date: new Date('2023-12-04'),
-      hours: 8.5,
-      description: 'Implemented pagination and filtering features',
-    },
-    {
-      date: new Date('2023-12-05'),
-      hours: 7.0,
-      description: 'Set up comprehensive testing suite',
-    },
-    {
-      date: new Date('2023-12-06'),
-      hours: 5.5,
-      description: 'Added security middleware and rate limiting',
-    },
-    {
-      date: new Date('2023-12-07'),
-      hours: 8.0,
-      description: 'Database optimization and query performance tuning',
-    },
-    {
-      date: new Date('2023-12-08'),
-      hours: 6.5,
-      description: 'Documentation and API specification updates',
-    },
-    {
-      date: new Date('2023-12-09'),
-      hours: 7.5,
-      description: 'Code review and refactoring for production readiness',
-    },
-    {
-      date: new Date('2023-12-10'),
-      hours: 8.0,
-      description: 'Final testing and deployment preparation',
-    },
-  ];
+  });
 
-  for (const entry of workEntries) {
-    try {
-      await prisma.workEntry.create({
-        data: {
-          ...entry,
-          userId: demoUser.id,
-        },
-      });
-    } catch (error) {
-      // Skip if entry already exists (unique constraint)
-      console.log(`ℹ️  Work entry for ${entry.date.toISOString().split('T')[0]} already exists`);
-    }
-  }
+  await prisma.workEntry.create({
+    data: {
+      userId: demoUser.id,
+      startTime: new Date('2024-01-16T10:00:00.000Z'),
+      endTime: new Date('2024-01-16T18:30:00.000Z'),
+      description: 'API development and testing',
+    },
+  });
 
-  console.log(`✅ Created ${workEntries.length} sample work entries`);
+  console.log(`✅ Created 2 sample work entries`);
   console.log('🎉 Database seed completed successfully!');
 }
 

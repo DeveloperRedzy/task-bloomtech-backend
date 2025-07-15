@@ -135,7 +135,7 @@ export function extractTokenFromHeader(authorizationHeader?: string): string | n
     return null;
   }
 
-  return parts[1];
+  return parts[1] || null;
 }
 
 /**

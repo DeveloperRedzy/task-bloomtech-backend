@@ -2,44 +2,55 @@ import { z } from 'zod';
 
 // Base validation schemas
 export const workEntryValidation = {
-  // Date validation - must be valid ISO date string
-  date: z
+  // Start time validation - must be valid ISO datetime string
+  startTime: z
     .string()
     .refine(
-      (date) => {
-        const parsed = new Date(date);
-        return !isNaN(parsed.getTime()) && date === parsed.toISOString().split('T')[0];
+      (datetime) => {
+        const parsed = new Date(datetime);
+        return !isNaN(parsed.getTime()) && datetime === parsed.toISOString();
       },
       {
-        message: 'Date must be a valid ISO date string (YYYY-MM-DD)',
+        message: 'Start time must be a valid ISO datetime string',
       }
     )
     .refine(
-      (date) => {
-        const parsed = new Date(date);
-        const today = new Date();
+      (datetime) => {
+        const parsed = new Date(datetime);
+        const now = new Date();
         const oneYearAgo = new Date();
-        oneYearAgo.setFullYear(today.getFullYear() - 1);
+        oneYearAgo.setFullYear(now.getFullYear() - 1);
 
-        return parsed <= today && parsed >= oneYearAgo;
+        return parsed <= now && parsed >= oneYearAgo;
       },
       {
-        message: 'Date cannot be in the future or more than 1 year ago',
+        message: 'Start time cannot be in the future or more than 1 year ago',
       }
     ),
 
-  // Hours validation - must be positive number with max 24 hours per day
-  hours: z
-    .number()
-    .positive({ message: 'Hours must be a positive number' })
-    .max(24, { message: 'Hours cannot exceed 24 per day' })
+  // End time validation - must be valid ISO datetime string
+  endTime: z
+    .string()
     .refine(
-      (hours) => {
-        // Allow up to 2 decimal places (quarter hours)
-        return Number((hours % 0.25).toFixed(10)) === 0;
+      (datetime) => {
+        const parsed = new Date(datetime);
+        return !isNaN(parsed.getTime()) && datetime === parsed.toISOString();
       },
       {
-        message: 'Hours must be in quarter-hour increments (0.25, 0.5, 0.75, etc.)',
+        message: 'End time must be a valid ISO datetime string',
+      }
+    )
+    .refine(
+      (datetime) => {
+        const parsed = new Date(datetime);
+        const now = new Date();
+        const oneYearAgo = new Date();
+        oneYearAgo.setFullYear(now.getFullYear() - 1);
+
+        return parsed <= now && parsed >= oneYearAgo;
+      },
+      {
+        message: 'End time cannot be in the future or more than 1 year ago',
       }
     ),
 
@@ -58,17 +69,52 @@ export const workEntryValidation = {
 };
 
 // Create work entry schema
-export const createWorkEntrySchema = z.object({
-  date: workEntryValidation.date,
-  hours: workEntryValidation.hours,
-  description: workEntryValidation.description,
-});
+export const createWorkEntrySchema = z
+  .object({
+    startTime: workEntryValidation.startTime,
+    endTime: workEntryValidation.endTime,
+    description: workEntryValidation.description,
+  })
+  .refine(
+    (data) => {
+      const startTime = new Date(data.startTime);
+      const endTime = new Date(data.endTime);
+      return startTime < endTime;
+    },
+    {
+      message: 'Start time must be before end time',
+    }
+  )
+  .refine(
+    (data) => {
+      const startTime = new Date(data.startTime);
+      const endTime = new Date(data.endTime);
+      const durationMs = endTime.getTime() - startTime.getTime();
+      const durationHours = durationMs / (1000 * 60 * 60);
+      return durationHours <= 24;
+    },
+    {
+      message: 'Work entry duration cannot exceed 24 hours',
+    }
+  )
+  .refine(
+    (data) => {
+      const startTime = new Date(data.startTime);
+      const endTime = new Date(data.endTime);
+      const durationMs = endTime.getTime() - startTime.getTime();
+      const durationMinutes = durationMs / (1000 * 60);
+      return durationMinutes >= 15; // Minimum 15 minutes
+    },
+    {
+      message: 'Work entry duration must be at least 15 minutes',
+    }
+  );
 
 // Update work entry schema (all fields optional)
 export const updateWorkEntrySchema = z
   .object({
-    date: workEntryValidation.date.optional(),
-    hours: workEntryValidation.hours.optional(),
+    startTime: workEntryValidation.startTime.optional(),
+    endTime: workEntryValidation.endTime.optional(),
     description: workEntryValidation.description.optional(),
   })
   .refine(
@@ -79,9 +125,55 @@ export const updateWorkEntrySchema = z
     {
       message: 'At least one field must be provided for update',
     }
+  )
+  .refine(
+    (data) => {
+      // If both start and end times are provided, validate their relationship
+      if (data.startTime && data.endTime) {
+        const startTime = new Date(data.startTime);
+        const endTime = new Date(data.endTime);
+        return startTime < endTime;
+      }
+      return true;
+    },
+    {
+      message: 'Start time must be before end time',
+    }
+  )
+  .refine(
+    (data) => {
+      // If both start and end times are provided, validate duration
+      if (data.startTime && data.endTime) {
+        const startTime = new Date(data.startTime);
+        const endTime = new Date(data.endTime);
+        const durationMs = endTime.getTime() - startTime.getTime();
+        const durationHours = durationMs / (1000 * 60 * 60);
+        return durationHours <= 24;
+      }
+      return true;
+    },
+    {
+      message: 'Work entry duration cannot exceed 24 hours',
+    }
+  )
+  .refine(
+    (data) => {
+      // If both start and end times are provided, validate minimum duration
+      if (data.startTime && data.endTime) {
+        const startTime = new Date(data.startTime);
+        const endTime = new Date(data.endTime);
+        const durationMs = endTime.getTime() - startTime.getTime();
+        const durationMinutes = durationMs / (1000 * 60);
+        return durationMinutes >= 15; // Minimum 15 minutes
+      }
+      return true;
+    },
+    {
+      message: 'Work entry duration must be at least 15 minutes',
+    }
   );
 
-// Work entry ID params schema
+// Work entry params schema
 export const workEntryParamsSchema = z.object({
   id: workEntryValidation.id,
 });
@@ -117,7 +209,10 @@ export const workEntryFiltersSchema = z
         }
       ),
 
-    sortBy: z.enum(['date', 'hours', 'createdAt']).optional().default('date'),
+    sortBy: z
+      .enum(['startTime', 'endTime', 'duration', 'createdAt'])
+      .optional()
+      .default('startTime'),
 
     sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
 
@@ -149,7 +244,7 @@ export const workEntryFiltersSchema = z
     }
   );
 
-// Export types inferred from schemas
+// Export types from validation schemas
 export type CreateWorkEntryRequest = z.infer<typeof createWorkEntrySchema>;
 export type UpdateWorkEntryRequest = z.infer<typeof updateWorkEntrySchema>;
 export type WorkEntryParams = z.infer<typeof workEntryParamsSchema>;

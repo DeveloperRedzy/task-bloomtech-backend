@@ -102,7 +102,7 @@ export async function optionalAuthenticate(
   next: NextFunction
 ): Promise<void> {
   try {
-    const token = extractTokenFromHeader(req.headers.authorization);
+    const token = extractTokenFromHeader((req as any).get('authorization') || '');
 
     if (!token) {
       // No token provided, continue without authentication
@@ -151,7 +151,7 @@ export function requireOwnership(userIdParam = 'userId') {
       return;
     }
 
-    const resourceUserId = req.params[userIdParam];
+    const resourceUserId = (req as any).params[userIdParam];
 
     if (!resourceUserId) {
       res.status(400).json({

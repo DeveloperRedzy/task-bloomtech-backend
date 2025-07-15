@@ -57,7 +57,7 @@ export class WorkEntryController {
    * POST /api/work-entries
    * Create a new work entry for the authenticated user
    */
-  async createWorkEntry(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async createWorkEntry(req: WorkEntryRequest, res: Response): Promise<void> {
     try {
       const userId = req.userId!;
 
@@ -83,14 +83,6 @@ export class WorkEntryController {
         return;
       }
 
-      if (error.message.includes('already exists')) {
-        res.status(409).json({
-          success: false,
-          message: error.message,
-        });
-        return;
-      }
-
       res.status(500).json({
         success: false,
         message: 'Failed to create work entry',
@@ -102,7 +94,7 @@ export class WorkEntryController {
    * GET /api/work-entries/:id
    * Get a specific work entry by ID
    */
-  async getWorkEntryById(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getWorkEntryById(req: WorkEntryRequest, res: Response): Promise<void> {
     try {
       const userId = req.userId!;
 
@@ -147,7 +139,7 @@ export class WorkEntryController {
    * PUT /api/work-entries/:id
    * Update a specific work entry
    */
-  async updateWorkEntry(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async updateWorkEntry(req: WorkEntryRequest, res: Response): Promise<void> {
     try {
       const userId = req.userId!;
 
@@ -201,7 +193,7 @@ export class WorkEntryController {
    * DELETE /api/work-entries/:id
    * Delete a specific work entry
    */
-  async deleteWorkEntry(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async deleteWorkEntry(req: WorkEntryRequest, res: Response): Promise<void> {
     try {
       const userId = req.userId!;
 
@@ -245,7 +237,7 @@ export class WorkEntryController {
    * GET /api/work-entries/stats
    * Get work entry statistics for the authenticated user
    */
-  async getWorkEntryStats(req: AuthenticatedRequest, res: Response): Promise<void> {
+  async getWorkEntryStats(req: WorkEntryRequest, res: Response): Promise<void> {
     try {
       const userId = req.userId!;
 

@@ -190,13 +190,13 @@ Authorization: Bearer <access-token>
 - `limit` (optional): Items per page (default: 20, max: 100)
 - `startDate` (optional): Filter entries from date (YYYY-MM-DD format)
 - `endDate` (optional): Filter entries to date (YYYY-MM-DD format)
-- `sortBy` (optional): Sort field (`date`, `hours`, `createdAt`) (default: `date`)
+- `sortBy` (optional): Sort field (`startTime`, `endTime`, `duration`, `createdAt`) (default: `startTime`)
 - `sortOrder` (optional): Sort order (`asc`, `desc`) (default: `desc`)
 
 **Example Request:**
 
 ```http
-GET /api/work-entries?page=1&limit=10&startDate=2025-01-01&endDate=2025-01-31&sortBy=date&sortOrder=desc
+GET /api/work-entries?page=1&limit=10&startDate=2025-01-01&endDate=2025-01-31&sortBy=startTime&sortOrder=desc
 ```
 
 **Response (200):**
@@ -208,16 +208,18 @@ GET /api/work-entries?page=1&limit=10&startDate=2025-01-01&endDate=2025-01-31&so
   "data": [
     {
       "id": "clm456def789",
-      "date": "2025-01-08",
-      "hours": 8.0,
+      "startTime": "2025-01-08T09:00:00.000Z",
+      "endTime": "2025-01-08T17:00:00.000Z",
+      "duration": 8.0,
       "description": "Working on API development",
       "createdAt": "2025-01-08T12:00:00.000Z",
       "updatedAt": "2025-01-08T12:00:00.000Z"
     },
     {
       "id": "clm789ghi012",
-      "date": "2025-01-07",
-      "hours": 7.5,
+      "startTime": "2025-01-07T09:30:00.000Z",
+      "endTime": "2025-01-07T17:00:00.000Z",
+      "duration": 7.5,
       "description": "Frontend integration work",
       "createdAt": "2025-01-07T12:00:00.000Z",
       "updatedAt": "2025-01-07T12:00:00.000Z"
@@ -246,16 +248,17 @@ Content-Type: application/json
 
 ```json
 {
-  "date": "2025-01-08",
-  "hours": 8.0,
+  "startTime": "2025-01-08T09:00:00.000Z",
+  "endTime": "2025-01-08T17:00:00.000Z",
   "description": "Working on frontend integration"
 }
 ```
 
 **Validation Rules:**
 
-- `date`: Required, ISO date format (YYYY-MM-DD), cannot be future date or older than 1 year
-- `hours`: Required, positive number, max 24 hours, must be in quarter-hour increments (0.25, 0.5, 0.75, etc.)
+- `startTime`: Required, ISO datetime format (YYYY-MM-DDTHH:mm:ss.sssZ), cannot be future date or older than 1 year
+- `endTime`: Required, ISO datetime format (YYYY-MM-DDTHH:mm:ss.sssZ), cannot be future date or older than 1 year, must be after startTime
+- `duration`: Automatically calculated from startTime and endTime, must be between 15 minutes and 24 hours
 - `description`: Required, 1-500 characters
 
 **Response (201):**
@@ -266,8 +269,9 @@ Content-Type: application/json
   "message": "Work entry created successfully",
   "data": {
     "id": "clm456def789",
-    "date": "2025-01-08",
-    "hours": 8.0,
+    "startTime": "2025-01-08T09:00:00.000Z",
+    "endTime": "2025-01-08T17:00:00.000Z",
+    "duration": 8.0,
     "description": "Working on frontend integration",
     "createdAt": "2025-01-08T12:00:00.000Z",
     "updatedAt": "2025-01-08T12:00:00.000Z"
@@ -290,8 +294,9 @@ Authorization: Bearer <access-token>
   "message": "Work entry retrieved successfully",
   "data": {
     "id": "clm456def789",
-    "date": "2025-01-08",
-    "hours": 8.0,
+    "startTime": "2025-01-08T09:00:00.000Z",
+    "endTime": "2025-01-08T17:00:00.000Z",
+    "duration": 8.0,
     "description": "Working on frontend integration",
     "createdAt": "2025-01-08T12:00:00.000Z",
     "updatedAt": "2025-01-08T12:00:00.000Z"
@@ -311,8 +316,8 @@ Content-Type: application/json
 
 ```json
 {
-  "date": "2025-01-08",
-  "hours": 7.5,
+  "startTime": "2025-01-08T09:00:00.000Z",
+  "endTime": "2025-01-08T16:30:00.000Z",
   "description": "Updated: Working on frontend integration and testing"
 }
 ```
@@ -325,8 +330,9 @@ Content-Type: application/json
   "message": "Work entry updated successfully",
   "data": {
     "id": "clm456def789",
-    "date": "2025-01-08",
-    "hours": 7.5,
+    "startTime": "2025-01-08T09:00:00.000Z",
+    "endTime": "2025-01-08T16:30:00.000Z",
+    "duration": 7.5,
     "description": "Updated: Working on frontend integration and testing",
     "createdAt": "2025-01-08T12:00:00.000Z",
     "updatedAt": "2025-01-08T14:30:00.000Z"
@@ -483,8 +489,9 @@ interface User {
 ```typescript
 interface WorkEntry {
   id: string;
-  date: string; // ISO date (YYYY-MM-DD)
-  hours: number; // Decimal number (quarter-hour increments)
+  startTime: string; // ISO datetime (YYYY-MM-DDTHH:mm:ss.sssZ)
+  endTime: string; // ISO datetime (YYYY-MM-DDTHH:mm:ss.sssZ)
+  duration: number; // Calculated duration in hours (rounded to 2 decimal places)
   description: string;
   createdAt: string; // ISO datetime
   updatedAt: string; // ISO datetime
@@ -642,7 +649,7 @@ const newEntry = await workEntryService.createWorkEntry({
 const entries = await workEntryService.getWorkEntries({
   page: 1,
   limit: 10,
-  sortBy: 'date',
+  sortBy: 'startTime',
   sortOrder: 'desc',
 });
 ```

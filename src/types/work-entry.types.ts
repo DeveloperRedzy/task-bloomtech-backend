@@ -1,29 +1,30 @@
 export interface WorkEntry {
   id: string;
   userId: string;
-  date: Date;
-  hours: number;
+  startTime: Date;
+  endTime: Date;
   description: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface CreateWorkEntryRequest {
-  date: string; // ISO date string
-  hours: number;
+  startTime: string; // ISO datetime string
+  endTime: string; // ISO datetime string
   description: string;
 }
 
 export interface UpdateWorkEntryRequest {
-  date?: string; // ISO date string
-  hours?: number;
+  startTime?: string; // ISO datetime string
+  endTime?: string; // ISO datetime string
   description?: string;
 }
 
 export interface WorkEntryResponse {
   id: string;
-  date: string; // ISO date string
-  hours: number;
+  startTime: string; // ISO datetime string
+  endTime: string; // ISO datetime string
+  duration: number; // Calculated duration in hours
   description: string;
   createdAt: string; // ISO datetime string
   updatedAt: string; // ISO datetime string
@@ -42,9 +43,9 @@ export interface WorkEntriesListResponse {
 }
 
 export interface WorkEntryFilters {
-  startDate?: string; // ISO date string
-  endDate?: string; // ISO date string
-  sortBy?: 'date' | 'hours' | 'createdAt';
+  startDate?: string; // ISO date string - filter entries that start on or after this date
+  endDate?: string; // ISO date string - filter entries that end on or before this date
+  sortBy?: 'startTime' | 'endTime' | 'duration' | 'createdAt';
   sortOrder?: 'asc' | 'desc';
   page?: number;
   limit?: number;

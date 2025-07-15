@@ -1,30 +1,32 @@
 import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
 import compression from 'compression';
-import rateLimit from 'express-rate-limit';
 import { config } from './config/app.config';
 import authRoutes from './routes/auth.routes';
 import workEntryRoutes from './routes/work-entry.routes';
+import healthRoutes from './routes/health.routes';
+
+// Enhanced security middleware
+import {
+  corsMiddleware,
+  helmetMiddleware,
+  requestSizeLimiter,
+  additionalSecurityHeaders,
+  inputSanitizer,
+  sqlInjectionProtection,
+  securityLogger,
+} from './middleware/security.middleware';
+import { authRateLimit, apiRateLimit } from './middleware/rate-limit.middleware';
 
 const app = express();
 
-// Security middleware
-app.use(helmet());
-app.use(
-  cors({
-    origin: config.security.corsOrigin,
-    credentials: true,
-  })
-);
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: config.security.rateLimitWindowMs,
-  max: config.security.rateLimitMax,
-  message: 'Too many requests from this IP, please try again later.',
-});
-app.use(limiter);
+// Enhanced security middleware stack
+app.use(helmetMiddleware); // Security headers
+app.use(corsMiddleware); // CORS with environment-specific config
+app.use(securityLogger); // Security logging
+app.use(requestSizeLimiter); // Request size limits
+app.use(additionalSecurityHeaders); // Additional security headers
+app.use(inputSanitizer); // Input sanitization
+app.use(sqlInjectionProtection); // SQL injection protection
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -33,16 +35,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Compression middleware
 app.use(compression());
 
-// Health check endpoint
-app.get('/health', (_req, res) => {
-  res.status(200).json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: config.app.nodeEnv,
-    version: process.env.npm_package_version || '1.0.0',
-  });
-});
+// Health check and monitoring routes
+app.use('/health', healthRoutes);
 
 // Root endpoint
 app.get('/', (_req, res) => {
@@ -55,9 +49,9 @@ app.get('/', (_req, res) => {
   });
 });
 
-// API routes
-app.use(`${config.app.apiPrefix}/auth`, authRoutes);
-app.use(`${config.app.apiPrefix}/work-entries`, workEntryRoutes);
+// API routes with tiered rate limiting
+app.use(`${config.app.apiPrefix}/auth`, authRateLimit, authRoutes); // Strict rate limiting for auth
+app.use(`${config.app.apiPrefix}/work-entries`, apiRateLimit, workEntryRoutes); // Standard rate limiting for API
 
 // 404 handler
 app.use('*', (_req, res) => {

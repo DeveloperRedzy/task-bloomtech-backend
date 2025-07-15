@@ -6,7 +6,7 @@ import {
   authSecurityHeaders,
   logAuthEvent,
 } from '../middleware/auth.middleware';
-import { validateRequest } from '../middleware/validation.middleware';
+import { validateRequest } from '../middleware/validation.middleware.js';
 import {
   createUserSchema,
   loginSchema,

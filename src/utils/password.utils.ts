@@ -65,6 +65,15 @@ export function checkPasswordStrength(password: string): {
   const feedback: string[] = [];
   let score = 0;
 
+  // Handle null/undefined inputs
+  if (!password || typeof password !== 'string' || password.trim() === '') {
+    return {
+      isValid: false,
+      score: 0,
+      feedback: ['Password is required'],
+    };
+  }
+
   // Length check
   if (password.length >= 8) {
     score += 1;
