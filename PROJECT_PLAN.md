@@ -229,6 +229,18 @@ This document outlines the step-by-step implementation plan for the BloomTech Wo
 - [x] Test error handling (enhanced for timestamp validation)
 - [x] Test edge cases and boundaries (comprehensive timestamp validation testing)
 
+### ⚠️ Testing Status Note
+
+**Current Test Issues**: Following the Phase 8 major schema migration from `date`/`hours` to `startTime`/`endTime`, some tests may be failing due to:
+
+- **Schema Changes**: Tests expecting old `date` and `hours` fields instead of timestamp structure
+- **Date Validation**: Hardcoded test dates that are now too old (security validation rejects dates > 1 year old)
+- **Constraint Changes**: Tests relying on the removed unique constraint for same-day entries
+- **API Response Format**: Integration tests expecting old response structure
+- **Factory Updates**: Test data factories may need updates for new timestamp format
+
+**Resolution**: Most core functionality tests have been updated, but some edge cases and legacy test patterns may need individual attention. The testing framework and infrastructure are solid - mainly requires updating test data and expectations to match the new timestamp-based schema.
+
 ### 🔄 Phase 7: Performance & Optimization (PARTIALLY COMPLETED)
 
 **Goal**: Optimize for production performance

@@ -306,6 +306,24 @@ npm run test:performance
 - **Integration Tests**: All API endpoints
 - **Database Tests**: All CRUD operations with timestamp validation
 
+### ⚠️ Known Test Issues
+
+**Note**: Some tests may currently be failing due to the major schema migration from `date`/`hours` to `startTime`/`endTime` structure (Phase 8). Common issues include:
+
+1. **Legacy API Format**: Tests expecting old response format with `date` and `hours` fields
+2. **Hardcoded Dates**: Integration tests with hardcoded dates that are now too old (security validation rejects dates older than 1 year)
+3. **Unique Constraint Tests**: Tests expecting the removed unique constraint `@@unique([userId, date])`
+4. **Factory Data**: Test factories that may still generate old schema format
+5. **Validation Schema**: Tests using deprecated validation schemas for the old structure
+
+**Recommended Fixes**:
+
+- Update test expectations to use `startTime`, `endTime`, and calculated `duration`
+- Use recent dates in test data (within the last year)
+- Update test factories to generate timestamp-based work entries
+- Remove tests that relied on the unique date constraint
+- Update integration tests to expect the new API response format
+
 ## 🔒 Security Features
 
 ### Authentication & Authorization
