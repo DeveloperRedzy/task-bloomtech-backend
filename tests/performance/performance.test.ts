@@ -28,7 +28,7 @@ describe('Performance Tests', () => {
       override: userData,
     });
 
-    const dbUser = await prisma.user.create({
+    await prisma.user.create({
       data: {
         email: testUser.email,
         password: testUser.password,
@@ -43,7 +43,7 @@ describe('Performance Tests', () => {
       password: 'SecurePassword123!',
     });
 
-    accessToken = loginResponse.body.data.accessToken;
+    accessToken = loginResponse.body.data.tokens.accessToken;
   });
 
   afterAll(async () => {

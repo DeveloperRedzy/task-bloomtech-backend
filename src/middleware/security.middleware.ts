@@ -231,7 +231,7 @@ export function sqlInjectionProtection(req: Request, res: Response, next: NextFu
     /(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|EXECUTE)\b)/i,
     /(UNION\s+SELECT)/i,
     /(\b(OR|AND)\s+\d+\s*=\s*\d+)/i,
-    /('|\"|;|--|\|)/,
+    /['";||-]/,
     /(\bSCRIPT\b)/i,
   ];
 

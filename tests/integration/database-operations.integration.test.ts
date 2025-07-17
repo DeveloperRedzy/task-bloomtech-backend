@@ -1,6 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
-import { createUserFactory, generateTestEmail } from '../factories/user.factory';
-import { createWorkEntryFactory } from '../factories/work-entry.factory';
+import { generateTestEmail } from '../factories/user.factory';
 import { hashPassword } from '../../src/utils/password.utils';
 
 const prisma = new PrismaClient();
@@ -139,7 +138,7 @@ describe('Database Operations Integration Tests', () => {
     });
 
     it('should handle user queries with filters', async () => {
-      const users = await Promise.all([
+      await Promise.all([
         prisma.user.create({
           data: {
             email: generateTestEmail('filter1'),
@@ -223,8 +222,8 @@ describe('Database Operations Integration Tests', () => {
 
     it('should create work entry with all required fields', async () => {
       const workEntryData = {
-        date: new Date('2024-01-15'),
-        hours: 8.0,
+        startTime: new Date('2024-01-15T09:00:00.000Z'),
+        endTime: new Date('2024-01-15T17:00:00.000Z'),
         description: 'Test work entry',
         userId: testUser.id,
       };
@@ -235,8 +234,8 @@ describe('Database Operations Integration Tests', () => {
 
       expect(workEntry).toEqual({
         id: expect.any(String),
-        date: workEntryData.date,
-        hours: workEntryData.hours,
+        startTime: workEntryData.startTime,
+        endTime: workEntryData.endTime,
         description: workEntryData.description,
         userId: workEntryData.userId,
         createdAt: expect.any(Date),
@@ -245,31 +244,30 @@ describe('Database Operations Integration Tests', () => {
     });
 
     it('should allow multiple entries for same date per user', async () => {
-      const workEntryData = {
-        date: new Date('2024-01-15'),
-        hours: 8.0,
-        description: 'First entry',
-        userId: testUser.id,
-      };
-
-      // Create first entry
+      // First entry: 9 AM - 5 PM
       const firstEntry = await prisma.workEntry.create({
-        data: workEntryData,
+        data: {
+          startTime: new Date('2024-01-15T09:00:00.000Z'),
+          endTime: new Date('2024-01-15T17:00:00.000Z'),
+          description: 'First entry',
+          userId: testUser.id,
+        },
       });
 
-      // Create second entry for same date (should succeed)
+      // Second entry for same date: 7 PM - 11 PM
       const secondEntry = await prisma.workEntry.create({
         data: {
-          ...workEntryData,
-          hours: 4.0,
+          startTime: new Date('2024-01-15T19:00:00.000Z'),
+          endTime: new Date('2024-01-15T23:00:00.000Z'),
           description: 'Second entry for same date',
+          userId: testUser.id,
         },
       });
 
       expect(firstEntry.id).toBeDefined();
       expect(secondEntry.id).toBeDefined();
       expect(firstEntry.id).not.toBe(secondEntry.id);
-      expect(firstEntry.date).toEqual(secondEntry.date);
+      expect(firstEntry.startTime.toDateString()).toBe(secondEntry.startTime.toDateString());
       expect(firstEntry.userId).toBe(secondEntry.userId);
     });
 
@@ -283,12 +281,10 @@ describe('Database Operations Integration Tests', () => {
         },
       });
 
-      const date = new Date('2024-01-15');
-
       const entry1 = await prisma.workEntry.create({
         data: {
-          date,
-          hours: 8.0,
+          startTime: new Date('2024-01-15T09:00:00.000Z'),
+          endTime: new Date('2024-01-15T17:00:00.000Z'),
           description: 'User 1 entry',
           userId: testUser.id,
         },
@@ -296,22 +292,22 @@ describe('Database Operations Integration Tests', () => {
 
       const entry2 = await prisma.workEntry.create({
         data: {
-          date,
-          hours: 7.5,
+          startTime: new Date('2024-01-15T09:00:00.000Z'),
+          endTime: new Date('2024-01-15T16:30:00.000Z'),
           description: 'User 2 entry',
           userId: otherUser.id,
         },
       });
 
-      expect(entry1.date).toEqual(entry2.date);
+      expect(entry1.startTime.toDateString()).toBe(entry2.startTime.toDateString());
       expect(entry1.userId).not.toBe(entry2.userId);
     });
 
     it('should update work entry fields correctly', async () => {
       const workEntry = await prisma.workEntry.create({
         data: {
-          date: new Date('2024-01-15'),
-          hours: 8.0,
+          startTime: new Date('2024-01-15T09:00:00.000Z'),
+          endTime: new Date('2024-01-15T17:00:00.000Z'),
           description: 'Original description',
           userId: testUser.id,
         },
@@ -320,26 +316,26 @@ describe('Database Operations Integration Tests', () => {
       const updatedEntry = await prisma.workEntry.update({
         where: { id: workEntry.id },
         data: {
-          hours: 7.5,
+          endTime: new Date('2024-01-15T16:30:00.000Z'),
           description: 'Updated description',
         },
       });
 
-      expect(updatedEntry.hours).toBe(7.5);
+      expect(updatedEntry.endTime).toEqual(new Date('2024-01-15T16:30:00.000Z'));
       expect(updatedEntry.description).toBe('Updated description');
-      expect(updatedEntry.date).toEqual(workEntry.date);
+      expect(updatedEntry.startTime).toEqual(workEntry.startTime);
       expect(updatedEntry.userId).toBe(workEntry.userId);
       expect(updatedEntry.updatedAt).not.toEqual(workEntry.updatedAt);
     });
 
     it('should handle work entry queries with pagination', async () => {
       // Create multiple work entries
-      const entries = await Promise.all(
+      await Promise.all(
         Array.from({ length: 15 }, (_, i) =>
           prisma.workEntry.create({
             data: {
-              date: new Date(2024, 0, i + 1),
-              hours: 8.0,
+              startTime: new Date(2024, 0, i + 1, 9, 0),
+              endTime: new Date(2024, 0, i + 1, 17, 0),
               description: `Entry ${i + 1}`,
               userId: testUser.id,
             },
@@ -352,19 +348,19 @@ describe('Database Operations Integration Tests', () => {
         where: { userId: testUser.id },
         take: 5,
         skip: 0,
-        orderBy: { date: 'asc' },
+        orderBy: { startTime: 'asc' },
       });
 
       const page2 = await prisma.workEntry.findMany({
         where: { userId: testUser.id },
         take: 5,
         skip: 5,
-        orderBy: { date: 'asc' },
+        orderBy: { startTime: 'asc' },
       });
 
       expect(page1).toHaveLength(5);
       expect(page2).toHaveLength(5);
-      expect(page1[0].date).not.toEqual(page2[0].date);
+      expect(page1[0]!.startTime).not.toEqual(page2[0]!.startTime);
     });
 
     it('should handle work entry queries with date filtering', async () => {
@@ -372,24 +368,24 @@ describe('Database Operations Integration Tests', () => {
       await Promise.all([
         prisma.workEntry.create({
           data: {
-            date: new Date('2024-01-15'),
-            hours: 8.0,
+            startTime: new Date('2024-01-15T09:00:00.000Z'),
+            endTime: new Date('2024-01-15T17:00:00.000Z'),
             description: 'January entry',
             userId: testUser.id,
           },
         }),
         prisma.workEntry.create({
           data: {
-            date: new Date('2024-02-15'),
-            hours: 7.5,
+            startTime: new Date('2024-02-15T09:00:00.000Z'),
+            endTime: new Date('2024-02-15T16:30:00.000Z'),
             description: 'February entry',
             userId: testUser.id,
           },
         }),
         prisma.workEntry.create({
           data: {
-            date: new Date('2024-03-15'),
-            hours: 6.0,
+            startTime: new Date('2024-03-15T09:00:00.000Z'),
+            endTime: new Date('2024-03-15T15:00:00.000Z'),
             description: 'March entry',
             userId: testUser.id,
           },
@@ -400,71 +396,77 @@ describe('Database Operations Integration Tests', () => {
       const filtered = await prisma.workEntry.findMany({
         where: {
           userId: testUser.id,
-          date: {
-            gte: new Date('2024-02-01'),
-            lte: new Date('2024-02-28'),
+          startTime: {
+            gte: new Date('2024-02-01T00:00:00.000Z'),
+            lte: new Date('2024-02-28T23:59:59.999Z'),
           },
         },
       });
 
       expect(filtered).toHaveLength(1);
-      expect(filtered[0].description).toBe('February entry');
+      expect(filtered[0]!.description).toBe('February entry');
     });
 
     it('should handle work entry sorting', async () => {
-      const entries = await Promise.all([
+      await Promise.all([
         prisma.workEntry.create({
           data: {
-            date: new Date('2024-01-15'),
-            hours: 8.0,
+            startTime: new Date('2024-01-15T09:00:00.000Z'),
+            endTime: new Date('2024-01-15T17:00:00.000Z'),
             description: 'Entry C',
             userId: testUser.id,
           },
         }),
         prisma.workEntry.create({
           data: {
-            date: new Date('2024-01-10'),
-            hours: 6.0,
+            startTime: new Date('2024-01-10T09:00:00.000Z'),
+            endTime: new Date('2024-01-10T15:00:00.000Z'),
             description: 'Entry A',
             userId: testUser.id,
           },
         }),
         prisma.workEntry.create({
           data: {
-            date: new Date('2024-01-20'),
-            hours: 9.0,
+            startTime: new Date('2024-01-20T09:00:00.000Z'),
+            endTime: new Date('2024-01-20T18:00:00.000Z'),
             description: 'Entry B',
             userId: testUser.id,
           },
         }),
       ]);
 
-      // Sort by date ascending
+      // Sort by startTime ascending
       const sortedByDate = await prisma.workEntry.findMany({
         where: { userId: testUser.id },
-        orderBy: { date: 'asc' },
+        orderBy: { startTime: 'asc' },
       });
 
-      expect(sortedByDate[0].description).toBe('Entry A');
-      expect(sortedByDate[1].description).toBe('Entry C');
-      expect(sortedByDate[2].description).toBe('Entry B');
+      expect(sortedByDate[0]!.description).toBe('Entry A');
+      expect(sortedByDate[1]!.description).toBe('Entry C');
+      expect(sortedByDate[2]!.description).toBe('Entry B');
 
-      // Sort by hours descending
-      const sortedByHours = await prisma.workEntry.findMany({
+      // Sort by duration (calculated field) - we'll use manual sorting for this test
+      const allEntries = await prisma.workEntry.findMany({
         where: { userId: testUser.id },
-        orderBy: { hours: 'desc' },
       });
 
-      expect(sortedByHours[0].hours).toBe(9.0);
-      expect(sortedByHours[1].hours).toBe(8.0);
-      expect(sortedByHours[2].hours).toBe(6.0);
+      const sortedByDuration = allEntries
+        .map((entry: any) => ({
+          ...entry,
+          duration: (entry.endTime.getTime() - entry.startTime.getTime()) / (1000 * 60 * 60),
+        }))
+        .sort((a: any, b: any) => b.duration - a.duration);
+
+      expect(sortedByDuration[0]!.duration).toBe(9.0); // Entry B: 9 hours
+      expect(sortedByDuration[1]!.duration).toBe(8.0); // Entry C: 8 hours
+      expect(sortedByDuration[2]!.duration).toBe(6.0); // Entry A: 6 hours
     });
 
     it('should handle work entry deletion', async () => {
       const workEntry = await prisma.workEntry.create({
         data: {
-          date: new Date('2024-01-15'),
-          hours: 8.0,
+          startTime: new Date('2024-01-15T09:00:00.000Z'),
+          endTime: new Date('2024-01-15T17:00:00.000Z'),
           description: 'To be deleted',
           userId: testUser.id,
         },
@@ -502,8 +504,8 @@ describe('Database Operations Integration Tests', () => {
 
       const workEntry = await prisma.workEntry.create({
         data: {
-          date: new Date('2024-01-15'),
-          hours: 8.0,
+          startTime: new Date('2024-01-15T09:00:00.000Z'),
+          endTime: new Date('2024-01-15T17:00:00.000Z'),
           description: 'Relationship test',
           userId: user.id,
         },
@@ -516,7 +518,7 @@ describe('Database Operations Integration Tests', () => {
       });
 
       expect(userWithEntries?.workEntries).toHaveLength(1);
-      expect(userWithEntries?.workEntries[0].id).toBe(workEntry.id);
+      expect(userWithEntries?.workEntries[0]!.id).toBe(workEntry.id);
 
       // Query work entry with user
       const entryWithUser = await prisma.workEntry.findUnique({
@@ -533,8 +535,8 @@ describe('Database Operations Integration Tests', () => {
       await expect(
         prisma.workEntry.create({
           data: {
-            date: new Date('2024-01-15'),
-            hours: 8.0,
+            startTime: new Date('2024-01-15T09:00:00.000Z'),
+            endTime: new Date('2024-01-15T17:00:00.000Z'),
             description: 'Invalid user',
             userId: 'non-existent-user-id',
           },
@@ -557,8 +559,8 @@ describe('Database Operations Integration Tests', () => {
 
         const workEntry = await tx.workEntry.create({
           data: {
-            date: new Date('2024-01-15'),
-            hours: 8.0,
+            startTime: new Date('2024-01-15T09:00:00.000Z'),
+            endTime: new Date('2024-01-15T17:00:00.000Z'),
             description: 'Transaction test',
             userId: user.id,
           },
@@ -608,8 +610,8 @@ describe('Database Operations Integration Tests', () => {
           // Create a work entry
           await tx.workEntry.create({
             data: {
-              date: new Date('2024-01-15'),
-              hours: 8.0,
+              startTime: new Date('2024-01-15T09:00:00.000Z'),
+              endTime: new Date('2024-01-15T17:00:00.000Z'),
               description: 'Rollback test',
               userId: user.id,
             },
@@ -664,14 +666,14 @@ describe('Database Operations Integration Tests', () => {
         await tx.workEntry.createMany({
           data: [
             {
-              date: new Date('2024-01-15'),
-              hours: 8.0,
+              startTime: new Date('2024-01-15T09:00:00.000Z'),
+              endTime: new Date('2024-01-15T17:00:00.000Z'),
               description: 'Complex test 1',
               userId: user1.id,
             },
             {
-              date: new Date('2024-01-15'),
-              hours: 7.5,
+              startTime: new Date('2024-01-15T09:00:00.000Z'),
+              endTime: new Date('2024-01-15T16:30:00.000Z'),
               description: 'Complex test 2',
               userId: user2.id,
             },
@@ -690,8 +692,8 @@ describe('Database Operations Integration Tests', () => {
       });
 
       expect(allUsers).toHaveLength(2);
-      expect(allUsers[0].workEntries).toHaveLength(1);
-      expect(allUsers[1].workEntries).toHaveLength(1);
+      expect(allUsers[0]!.workEntries).toHaveLength(1);
+      expect(allUsers[1]!.workEntries).toHaveLength(1);
     });
   });
 
@@ -708,7 +710,7 @@ describe('Database Operations Integration Tests', () => {
         })
       ).rejects.toThrow();
 
-      // Work entry without date
+      // Work entry without startTime
       const user = await prisma.user.create({
         data: {
           email: generateTestEmail('required'),
@@ -721,8 +723,8 @@ describe('Database Operations Integration Tests', () => {
       await expect(
         prisma.workEntry.create({
           data: {
-            hours: 8.0,
-            description: 'Missing date',
+            endTime: new Date('2024-01-15T17:00:00.000Z'),
+            description: 'Missing startTime',
             userId: user.id,
           } as any,
         })
@@ -742,8 +744,8 @@ describe('Database Operations Integration Tests', () => {
       // Create many work entries
       await prisma.workEntry.createMany({
         data: Array.from({ length: 100 }, (_, i) => ({
-          date: new Date(2024, 0, i + 1),
-          hours: 8.0,
+          startTime: new Date(2024, 0, i + 1, 9, 0),
+          endTime: new Date(2024, 0, i + 1, 17, 0),
           description: `Index test ${i + 1}`,
           userId: user.id,
         })),
@@ -754,7 +756,7 @@ describe('Database Operations Integration Tests', () => {
       // Query should be fast due to indexes
       const results = await prisma.workEntry.findMany({
         where: { userId: user.id },
-        orderBy: { date: 'desc' },
+        orderBy: { startTime: 'desc' },
         take: 10,
       });
 
@@ -779,8 +781,8 @@ describe('Database Operations Integration Tests', () => {
       const promises = Array.from({ length: 20 }, (_, i) =>
         prisma.workEntry.create({
           data: {
-            date: new Date(2024, 0, i + 1),
-            hours: 8.0,
+            startTime: new Date(2024, 0, i + 1, 9, 0),
+            endTime: new Date(2024, 0, i + 1, 17, 0),
             description: `Concurrent entry ${i + 1}`,
             userId: user.id,
           },
@@ -818,8 +820,8 @@ describe('Database Operations Integration Tests', () => {
 
       for (let batch = 0; batch < batches; batch++) {
         const data = Array.from({ length: batchSize }, (_, i) => ({
-          date: new Date(2024, 0, batch * batchSize + i + 1),
-          hours: 8.0,
+          startTime: new Date(2024, 0, batch * batchSize + i + 1, 9, 0),
+          endTime: new Date(2024, 0, batch * batchSize + i + 1, 17, 0),
           description: `Performance test ${batch * batchSize + i + 1}`,
           userId: user.id,
         }));
@@ -834,7 +836,7 @@ describe('Database Operations Integration Tests', () => {
         where: { userId: user.id },
         take: 50,
         skip: 100,
-        orderBy: { date: 'desc' },
+        orderBy: { startTime: 'desc' },
       });
 
       const endTime = Date.now();
@@ -856,8 +858,8 @@ describe('Database Operations Integration Tests', () => {
 
       await prisma.workEntry.create({
         data: {
-          date: new Date('2024-01-15'),
-          hours: 8.0,
+          startTime: new Date('2024-01-15T09:00:00.000Z'),
+          endTime: new Date('2024-01-15T17:00:00.000Z'),
           description: 'Optimization test',
           userId: user.id,
         },
@@ -868,15 +870,15 @@ describe('Database Operations Integration Tests', () => {
         where: { userId: user.id },
         select: {
           id: true,
-          date: true,
-          hours: true,
+          startTime: true,
+          endTime: true,
         },
       });
 
       expect(selectQuery[0]).toEqual({
         id: expect.any(String),
-        date: expect.any(Date),
-        hours: 8.0,
+        startTime: expect.any(Date),
+        endTime: expect.any(Date),
       });
       expect(selectQuery[0]).not.toHaveProperty('description');
       expect(selectQuery[0]).not.toHaveProperty('userId');
@@ -894,7 +896,7 @@ describe('Database Operations Integration Tests', () => {
         },
       });
 
-      expect(includeQuery[0].user).toEqual({
+      expect(includeQuery[0]!.user).toEqual({
         firstName: 'Optimize',
         lastName: 'Test',
       });
@@ -924,18 +926,18 @@ describe('Database Operations Integration Tests', () => {
 
       const firstEntry = await prisma.workEntry.create({
         data: {
-          date: new Date('2024-01-15'),
-          hours: 8.0,
+          startTime: new Date('2024-01-15T09:00:00.000Z'),
+          endTime: new Date('2024-01-15T17:00:00.000Z'),
           description: 'Constraint test',
           userId: user.id,
         },
       });
 
-      // Create another entry for same date (should succeed now)
+      // Create another entry for same date (should succeed now since unique constraint was removed)
       const secondEntry = await prisma.workEntry.create({
         data: {
-          date: new Date('2024-01-15'),
-          hours: 7.5,
+          startTime: new Date('2024-01-15T19:00:00.000Z'),
+          endTime: new Date('2024-01-15T22:30:00.000Z'),
           description: 'Another entry for same date',
           userId: user.id,
         },
@@ -944,7 +946,7 @@ describe('Database Operations Integration Tests', () => {
       expect(firstEntry.id).toBeDefined();
       expect(secondEntry.id).toBeDefined();
       expect(firstEntry.id).not.toBe(secondEntry.id);
-      expect(firstEntry.date).toEqual(secondEntry.date);
+      expect(firstEntry.startTime.toDateString()).toBe(secondEntry.startTime.toDateString());
     });
   });
 
@@ -997,8 +999,8 @@ describe('Database Operations Integration Tests', () => {
 
       const workEntry = await prisma.workEntry.create({
         data: {
-          date: new Date('2024-01-15'),
-          hours: 8.0,
+          startTime: new Date('2024-01-15T09:00:00.000Z'),
+          endTime: new Date('2024-01-15T17:00:00.000Z'),
           description: 'Backup test',
           userId: user.id,
         },
@@ -1036,15 +1038,15 @@ describe('Database Operations Integration Tests', () => {
 
         const restoredWorkEntry = await prisma.workEntry.create({
           data: {
-            date: userData.workEntries[0].date,
-            hours: userData.workEntries[0].hours,
-            description: userData.workEntries[0].description,
+            startTime: userData.workEntries[0]!.startTime,
+            endTime: userData.workEntries[0]!.endTime,
+            description: userData.workEntries[0]!.description,
             userId: restoredUser.id,
           },
         });
 
         expect(restoredUser.email).toBe(userData.email);
-        expect(restoredWorkEntry.description).toBe(userData.workEntries[0].description);
+        expect(restoredWorkEntry.description).toBe(userData.workEntries[0]!.description);
       }
     });
   });

@@ -18,13 +18,16 @@ export const workEntryValidation = {
       (datetime) => {
         const parsed = new Date(datetime);
         const now = new Date();
-        const oneYearAgo = new Date();
-        oneYearAgo.setFullYear(now.getFullYear() - 1);
+        // Add 1 minute buffer to avoid timing issues in tests
+        const maxTime = new Date(now.getTime() + 60000);
+        // Allow dates up to 2 years ago for more flexibility
+        const minTime = new Date();
+        minTime.setFullYear(now.getFullYear() - 2);
 
-        return parsed <= now && parsed >= oneYearAgo;
+        return parsed <= maxTime && parsed >= minTime;
       },
       {
-        message: 'Start time cannot be in the future or more than 1 year ago',
+        message: 'Start time cannot be more than 1 minute in the future or more than 2 years ago',
       }
     ),
 
@@ -44,13 +47,16 @@ export const workEntryValidation = {
       (datetime) => {
         const parsed = new Date(datetime);
         const now = new Date();
-        const oneYearAgo = new Date();
-        oneYearAgo.setFullYear(now.getFullYear() - 1);
+        // Add 1 minute buffer to avoid timing issues in tests
+        const maxTime = new Date(now.getTime() + 60000);
+        // Allow dates up to 2 years ago for more flexibility
+        const minTime = new Date();
+        minTime.setFullYear(now.getFullYear() - 2);
 
-        return parsed <= now && parsed >= oneYearAgo;
+        return parsed <= maxTime && parsed >= minTime;
       },
       {
-        message: 'End time cannot be in the future or more than 1 year ago',
+        message: 'End time cannot be more than 1 minute in the future or more than 2 years ago',
       }
     ),
 

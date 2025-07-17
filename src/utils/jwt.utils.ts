@@ -130,7 +130,8 @@ export function extractTokenFromHeader(authorizationHeader?: string): string | n
     return null;
   }
 
-  const parts = authorizationHeader.split(' ');
+  // Split by one or more spaces and filter out empty strings
+  const parts = authorizationHeader.split(/\s+/).filter((part) => part.length > 0);
   if (parts.length !== 2 || parts[0] !== 'Bearer') {
     return null;
   }

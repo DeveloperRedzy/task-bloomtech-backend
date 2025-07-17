@@ -2,7 +2,6 @@ import request from 'supertest';
 import { PrismaClient } from '@prisma/client';
 import app from '../../src/app';
 import { createUserFactory, generateTestEmail } from '../factories/user.factory';
-import { hashPassword } from '../../src/utils/password.utils';
 import { generateRefreshToken } from '../../src/utils/jwt.utils';
 
 const prisma = new PrismaClient();
@@ -384,7 +383,7 @@ describe('Authentication Integration Tests', () => {
         password: 'SecurePassword123!',
       });
 
-      accessToken = loginResponse.body.data.accessToken;
+      accessToken = loginResponse.body.data.tokens.accessToken;
     });
 
     it('should get user profile successfully with valid token', async () => {

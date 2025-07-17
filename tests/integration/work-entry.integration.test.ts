@@ -2,16 +2,30 @@ import request from 'supertest';
 import { PrismaClient } from '@prisma/client';
 import app from '../../src/app';
 import { createUserFactory, generateTestEmail } from '../factories/user.factory';
-import { createWorkEntryFactory } from '../factories/work-entry.factory';
 import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
 
+// Helper function to generate valid recent dates for tests
+const getRecentDate = (daysAgo: number, hour: number = 9, minute: number = 0): string => {
+  const date = new Date();
+  date.setDate(date.getDate() - daysAgo);
+  date.setHours(hour, minute, 0, 0);
+  return date.toISOString();
+};
+
+const getRecentDateObj = (daysAgo: number, hour: number = 9, minute: number = 0): Date => {
+  const date = new Date();
+  date.setDate(date.getDate() - daysAgo);
+  date.setHours(hour, minute, 0, 0);
+  return date;
+};
+
 describe('Work Entry Integration Tests', () => {
   let testUser: any;
+  let userId: string;
   let accessToken: string;
   let otherUser: any;
-  let otherAccessToken: string;
 
   beforeEach(async () => {
     // Clean up database before each test
@@ -40,13 +54,18 @@ describe('Work Entry Integration Tests', () => {
       },
     });
 
+    userId = dbUser.id;
+
     // Login to get access token
     const loginResponse = await request(app).post('/api/auth/login').send({
       email: testUser.email,
       password: 'SecurePassword123!',
     });
 
-    accessToken = loginResponse.body.data.accessToken;
+    if (!loginResponse.body?.data?.tokens?.accessToken) {
+      throw new Error(`Login failed for testUser. Response: ${JSON.stringify(loginResponse.body)}`);
+    }
+    accessToken = loginResponse.body.data.tokens.accessToken;
 
     // Create another user for authorization testing
     const otherUserData = {
@@ -61,7 +80,7 @@ describe('Work Entry Integration Tests', () => {
       override: otherUserData,
     });
 
-    const otherDbUser = await prisma.user.create({
+    await prisma.user.create({
       data: {
         email: otherUser.email,
         password: otherUser.password,
@@ -75,7 +94,11 @@ describe('Work Entry Integration Tests', () => {
       password: 'SecurePassword123!',
     });
 
-    otherAccessToken = otherLoginResponse.body.data.accessToken;
+    if (!otherLoginResponse.body?.data?.tokens?.accessToken) {
+      throw new Error(
+        `Login failed for otherUser. Response: ${JSON.stringify(otherLoginResponse.body)}`
+      );
+    }
   });
 
   afterAll(async () => {
@@ -88,8 +111,8 @@ describe('Work Entry Integration Tests', () => {
   describe('POST /api/work-entries', () => {
     it('should create a new work entry successfully', async () => {
       const workEntryData = {
-        startTime: '2024-01-15T09:00:00.000Z',
-        endTime: '2024-01-15T17:00:00.000Z',
+        startTime: getRecentDate(1, 9), // Yesterday, 9 AM
+        endTime: getRecentDate(1, 17), // Yesterday, 5 PM
         description: 'Working on authentication system',
       };
 
@@ -104,8 +127,8 @@ describe('Work Entry Integration Tests', () => {
         message: 'Work entry created successfully',
         data: {
           id: expect.any(String),
-          startTime: '2024-01-15T09:00:00.000Z',
-          endTime: '2024-01-15T17:00:00.000Z',
+          startTime: getRecentDate(1, 9), // Yesterday, 9 AM
+          endTime: getRecentDate(1, 17), // Yesterday, 5 PM
           duration: 8.0,
           description: 'Working on authentication system',
           createdAt: expect.any(String),
@@ -115,24 +138,24 @@ describe('Work Entry Integration Tests', () => {
 
       // Verify the entry was created in the database
       const workEntry = await prisma.workEntry.findFirst({
-        where: { userId: testUser.id },
+        where: { userId },
       });
 
       expect(workEntry).toBeTruthy();
-      expect(workEntry!.startTime).toEqual(new Date('2024-01-15T09:00:00.000Z'));
-      expect(workEntry!.endTime).toEqual(new Date('2024-01-15T17:00:00.000Z'));
+      expect(workEntry!.startTime).toEqual(getRecentDateObj(1, 9));
+      expect(workEntry!.endTime).toEqual(getRecentDateObj(1, 17));
     });
 
     it('should create multiple work entries for same user', async () => {
       const workEntryData1 = {
-        startTime: '2024-01-15T09:00:00.000Z',
-        endTime: '2024-01-15T17:00:00.000Z',
+        startTime: getRecentDate(1, 9), // Yesterday, 9 AM
+        endTime: getRecentDate(1, 17), // Yesterday, 5 PM
         description: 'Morning work session',
       };
 
       const workEntryData2 = {
-        startTime: '2024-01-15T19:00:00.000Z',
-        endTime: '2024-01-15T21:00:00.000Z',
+        startTime: getRecentDate(1, 19), // Yesterday, 7 PM
+        endTime: getRecentDate(1, 21), // Yesterday, 9 PM
         description: 'Evening work session',
       };
 
@@ -158,8 +181,8 @@ describe('Work Entry Integration Tests', () => {
 
     it('should reject creation with invalid time range', async () => {
       const workEntryData = {
-        startTime: '2024-01-15T17:00:00.000Z',
-        endTime: '2024-01-15T09:00:00.000Z', // End before start
+        startTime: getRecentDate(1, 17), // Yesterday, 5 PM
+        endTime: getRecentDate(1, 9), // Yesterday, 9 AM (End before start)
         description: 'Invalid time range',
       };
 
@@ -170,7 +193,7 @@ describe('Work Entry Integration Tests', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('validation');
+      expect(response.body.message).toContain('Invalid input data');
     });
 
     it('should reject creation with missing required fields', async () => {
@@ -186,7 +209,7 @@ describe('Work Entry Integration Tests', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('validation');
+      expect(response.body.message).toContain('Invalid input data');
     });
 
     it('should validate various duration lengths', async () => {
@@ -254,7 +277,7 @@ describe('Work Entry Integration Tests', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('validation');
+      expect(response.body.message).toContain('Invalid input data');
     });
 
     it('should sanitize description input', async () => {
@@ -317,31 +340,46 @@ describe('Work Entry Integration Tests', () => {
 
   describe('GET /api/work-entries', () => {
     beforeEach(async () => {
-      // Create test work entries with different timestamps
+      // Ensure userId is available
+      if (!userId) {
+        throw new Error('userId is not available for creating work entries');
+      }
+
+      // Verify user exists in database
+      const userExists = await prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!userExists) {
+        throw new Error(`User with id ${userId} does not exist in database`);
+      }
+
+      // Create test work entries with different timestamps (using recent dates)
+      const today = new Date();
       const workEntries = [
         {
-          startTime: new Date('2024-01-01T09:00:00.000Z'),
-          endTime: new Date('2024-01-01T17:00:00.000Z'),
-          description: 'New Year work',
+          startTime: new Date(today.getTime() - 4 * 24 * 60 * 60 * 1000 + 9 * 60 * 60 * 1000), // 4 days ago, 9 AM
+          endTime: new Date(today.getTime() - 4 * 24 * 60 * 60 * 1000 + 17 * 60 * 60 * 1000), // 4 days ago, 5 PM
+          description: 'Backend development',
         },
         {
-          startTime: new Date('2024-01-02T10:00:00.000Z'),
-          endTime: new Date('2024-01-02T17:30:00.000Z'),
+          startTime: new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000 + 10 * 60 * 60 * 1000), // 3 days ago, 10 AM
+          endTime: new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000 + 17.5 * 60 * 60 * 1000), // 3 days ago, 5:30 PM
           description: 'Project development',
         },
         {
-          startTime: new Date('2024-01-03T08:00:00.000Z'),
-          endTime: new Date('2024-01-03T14:00:00.000Z'),
+          startTime: new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000 + 8 * 60 * 60 * 1000), // 2 days ago, 8 AM
+          endTime: new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000 + 14 * 60 * 60 * 1000), // 2 days ago, 2 PM
           description: 'Bug fixes',
         },
         {
-          startTime: new Date('2024-01-04T09:00:00.000Z'),
-          endTime: new Date('2024-01-04T17:30:00.000Z'),
+          startTime: new Date(today.getTime() - 1 * 24 * 60 * 60 * 1000 + 9 * 60 * 60 * 1000), // Yesterday, 9 AM
+          endTime: new Date(today.getTime() - 1 * 24 * 60 * 60 * 1000 + 17.5 * 60 * 60 * 1000), // Yesterday, 5:30 PM
           description: 'Code review',
         },
         {
-          startTime: new Date('2024-01-05T13:00:00.000Z'),
-          endTime: new Date('2024-01-05T17:00:00.000Z'),
+          startTime: new Date(today.getTime() - 0 * 24 * 60 * 60 * 1000 + 9 * 60 * 60 * 1000), // Today, 9 AM
+          endTime: new Date(today.getTime() - 0 * 24 * 60 * 60 * 1000 + 13 * 60 * 60 * 1000), // Today, 1 PM
           description: 'Documentation',
         },
       ];
@@ -349,7 +387,7 @@ describe('Work Entry Integration Tests', () => {
       await prisma.workEntry.createMany({
         data: workEntries.map((entry) => ({
           ...entry,
-          userId: testUser.id,
+          userId,
         })),
       });
     });
@@ -619,7 +657,7 @@ describe('Work Entry Integration Tests', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('validation');
+      expect(response.body.message).toContain('Invalid input data');
     });
 
     it('should reject update with no fields provided', async () => {
@@ -630,7 +668,7 @@ describe('Work Entry Integration Tests', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('validation');
+      expect(response.body.message).toContain('Invalid input data');
     });
 
     it('should return 404 for non-existent work entry', async () => {
@@ -788,7 +826,7 @@ describe('Work Entry Integration Tests', () => {
       await prisma.workEntry.createMany({
         data: workEntries.map((entry) => ({
           ...entry,
-          userId: testUser.id,
+          userId,
         })),
       });
     });
@@ -855,7 +893,7 @@ describe('Work Entry Integration Tests', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('validation');
+      expect(response.body.message).toContain('Query contains potentially harmful content');
     });
   });
 
@@ -917,7 +955,7 @@ describe('Work Entry Integration Tests', () => {
         .expect(400);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('validation');
+      expect(response.body.message).toContain('Invalid input data');
     });
 
     it('should handle concurrent creation requests', async () => {
@@ -945,7 +983,7 @@ describe('Work Entry Integration Tests', () => {
 
       // Verify all entries were created
       const entries = await prisma.workEntry.findMany({
-        where: { userId: testUser.id },
+        where: { userId },
       });
 
       expect(entries.length).toBe(5);

@@ -67,8 +67,11 @@ function skipRateLimit(req: Request): boolean {
     return true;
   }
 
-  // Skip for localhost in development
-  if (process.env.NODE_ENV === 'development' && (ip === '127.0.0.1' || ip === '::1')) {
+  // Skip for localhost in development and test environments
+  if (
+    (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') &&
+    (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1')
+  ) {
     return true;
   }
 

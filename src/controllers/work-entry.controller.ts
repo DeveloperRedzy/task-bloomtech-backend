@@ -9,11 +9,13 @@ interface WorkEntryRequest extends AuthenticatedRequest {
   body: any;
 }
 import {
-  createWorkEntrySchema,
-  updateWorkEntrySchema,
   workEntryParamsSchema,
   workEntryFiltersSchema,
 } from '../utils/work-entry-validation.utils';
+import {
+  enhancedCreateWorkEntrySchema,
+  enhancedUpdateWorkEntrySchema,
+} from '../utils/security-validation.utils';
 
 export class WorkEntryController {
   /**
@@ -62,7 +64,7 @@ export class WorkEntryController {
       const userId = req.userId!;
 
       // Validate request body
-      const validatedData = createWorkEntrySchema.parse(req.body);
+      const validatedData = enhancedCreateWorkEntrySchema.parse(req.body);
 
       const workEntry = await workEntryService.createWorkEntry(userId, validatedData);
 
@@ -145,7 +147,7 @@ export class WorkEntryController {
 
       // Validate params and body
       const { id } = workEntryParamsSchema.parse(req.params);
-      const validatedData = updateWorkEntrySchema.parse(req.body);
+      const validatedData = enhancedUpdateWorkEntrySchema.parse(req.body);
 
       const workEntry = await workEntryService.updateWorkEntry(userId, id, validatedData);
 

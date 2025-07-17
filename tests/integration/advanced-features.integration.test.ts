@@ -2,7 +2,6 @@ import request from 'supertest';
 import { PrismaClient } from '@prisma/client';
 import app from '../../src/app';
 import { createUserFactory, generateTestEmail } from '../factories/user.factory';
-import { createWorkEntryFactory } from '../factories/work-entry.factory';
 import { cacheService } from '../../src/services/cache.service';
 import { performanceMonitor } from '../../src/services/performance-monitor.service';
 
@@ -52,7 +51,7 @@ describe('Advanced Features Integration Tests', () => {
       password: 'SecurePassword123!',
     });
 
-    accessToken = loginResponse.body.data.accessToken;
+    accessToken = loginResponse.body.data.tokens.accessToken;
   });
 
   afterAll(async () => {
@@ -64,6 +63,11 @@ describe('Advanced Features Integration Tests', () => {
 
   describe('Advanced Pagination Features', () => {
     beforeEach(async () => {
+      // Ensure userId is available
+      if (!userId) {
+        throw new Error('User ID not available for work entry creation');
+      }
+
       // Create 25 work entries for pagination testing
       const workEntries = Array.from({ length: 25 }, (_, i) => {
         const baseDate = new Date(2024, 0, i + 1); // Jan 1-25, 2024
@@ -90,12 +94,12 @@ describe('Advanced Features Integration Tests', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .expect(200);
 
-      expect(response.body.data.workEntries).toHaveLength(10);
-      expect(response.body.data.pagination).toEqual({
+      expect(response.body.data).toHaveLength(10);
+      expect(response.body.pagination).toEqual({
         page: 1,
         limit: 10,
         total: 25,
-        pages: 3,
+        totalPages: 3,
         hasNext: true,
         hasPrev: false,
       });
@@ -196,6 +200,11 @@ describe('Advanced Features Integration Tests', () => {
 
   describe('Advanced Filtering Features', () => {
     beforeEach(async () => {
+      // Ensure userId is available
+      if (!userId) {
+        throw new Error('User ID not available for work entry creation');
+      }
+
       // Create work entries across different months and hours
       const workEntries = [
         {
@@ -311,6 +320,11 @@ describe('Advanced Features Integration Tests', () => {
 
   describe('Advanced Sorting Features', () => {
     beforeEach(async () => {
+      // Ensure userId is available
+      if (!userId) {
+        throw new Error('User ID not available for work entry creation');
+      }
+
       // Create work entries with different dates and durations for sorting
       const workEntries = [
         {
@@ -426,6 +440,11 @@ describe('Advanced Features Integration Tests', () => {
 
   describe('Caching System Integration', () => {
     beforeEach(async () => {
+      // Ensure userId is available
+      if (!userId) {
+        throw new Error('User ID not available for work entry creation');
+      }
+
       // Create test work entries
       const workEntries = Array.from({ length: 10 }, (_, i) => {
         const baseDate = new Date(2024, 0, i + 1);
@@ -550,6 +569,11 @@ describe('Advanced Features Integration Tests', () => {
 
   describe('Performance Monitoring Integration', () => {
     beforeEach(async () => {
+      // Ensure userId is available
+      if (!userId) {
+        throw new Error('User ID not available for work entry creation');
+      }
+
       // Create test work entries
       await prisma.workEntry.createMany({
         data: Array.from({ length: 50 }, (_, i) => {
@@ -685,6 +709,11 @@ describe('Advanced Features Integration Tests', () => {
 
   describe('Complex Integration Scenarios', () => {
     beforeEach(async () => {
+      // Ensure userId is available
+      if (!userId) {
+        throw new Error('User ID not available for work entry creation');
+      }
+
       // Create comprehensive test data
       await prisma.workEntry.createMany({
         data: Array.from({ length: 100 }, (_, i) => {

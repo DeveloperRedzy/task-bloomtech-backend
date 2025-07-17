@@ -1,10 +1,6 @@
 import type { Request, Response } from 'express';
 import { AuthService, AuthError } from '../services/auth.service';
-import {
-  validateSchema,
-  refreshTokenSchema,
-  changePasswordSchema,
-} from '../utils/validation.utils';
+import { validateSchema, refreshTokenSchema } from '../utils/validation.utils';
 import {
   enhancedCreateUserSchema,
   enhancedLoginSchema,
